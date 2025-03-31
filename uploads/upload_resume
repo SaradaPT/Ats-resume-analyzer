@@ -1,0 +1,4 @@
+import os
+
+# Delete the uploaded file after processing
+os.remove(resume_path)

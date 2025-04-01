@@ -1,4 +1,60 @@
 import os
+from flask import Flask, render_template, request, jsonify
+from werkzeug.utils import secure_filename
+from resume_parser import extract_text_from_pdf
+from resume_matcher import calculate_resume_score, generate_feedback
 
-# Delete the uploaded file after processing
-os.remove(resume_path)
+app = Flask(__name__)
+
+# Configure upload folder and allowed file types
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'pdf'}
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Helper function to check allowed file types
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/upload', methods=['POST'])
+def upload_resume():
+    # Check if the file part is present in the request
+    if 'resume' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['resume']
+
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if file and allowed_file(file.filename):
+        # Save the uploaded file
+        filename = secure_filename(file.filename)
+        resume_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        file.save(resume_path)
+
+        # Extract text from resume
+        resume_text = extract_text_from_pdf(resume_path)
+
+        # Get the job description from the form input
+        job_description = request.form['job_description']
+
+        # Calculate score and generate feedback
+        score = calculate_resume_score(resume_text, job_description)
+        feedback = generate_feedback(resume_text, job_description)
+
+        # Clean up: delete the uploaded file after processing
+        os.remove(resume_path)
+
+        # Return JSON response with score and feedback
+        return jsonify({'score': score, 'feedback': feedback})
+
+    return jsonify({'error': 'Invalid file type'}), 400
+
+if __name__ == '__main__':
+    app.run(debug=True)
